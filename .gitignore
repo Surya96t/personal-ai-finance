@@ -1,0 +1,12 @@
+# Environment variables
+.env
+.env*.local
+.env.example
+
+# Google Cloud credentials
+gcp-credentials.json
+
+# Python virtual environment
+backend/.venv/
+node_modules
+.vscode/

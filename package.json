@@ -1,0 +1,17 @@
+{
+  "name": "personal-ai-finance",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev:*\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "cd backend && source .venv/bin/activate && cross-env INNGEST_DEV=1 uvicorn app.main:app --reload"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
