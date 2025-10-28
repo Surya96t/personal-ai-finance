@@ -26,7 +26,11 @@ import {
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
+import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { ListX } from 'lucide-react';
 
 // Define the TypeScript type for a single transaction
 type Transaction = {
@@ -48,16 +52,18 @@ export function TransactionsDataTable() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- State for filter controls ---
+  // State for filter controls
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  // --- NEW: State to track which transaction is being updated ---
+  // State to track which transaction is being updated
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // --- Data fetching logic ---
+  // Use our custom hook to debounce the search term
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
+  // Data fetching logic
   useEffect(() => {
     const fetchTransactions = async () => {
       setIsLoading(true);
@@ -92,20 +98,20 @@ export function TransactionsDataTable() {
     fetchTransactions();
   }, [getToken, debouncedSearchTerm, selectedCategory, dateRange]);
 
-  // --- Categories useMemo ---
+  // Dynamically get category list from the data we've fetched
   const categories = useMemo(() => {
     const uniqueCategories = new Set(transactions.map(t => t.category));
     return Array.from(uniqueCategories).filter(category => category && category.trim() !== '').sort();
   }, [transactions]);
 
-  // --- Filter handler ---
+  // Handler function for the main category filter
   const handleCategoryChange = (value: string) => {
     setSelectedCategory(value === "all" ? "" : value);
   };
 
-  // --- NEW: Handler function for inline category updates ---
+  // Handler function for inline category updates
   const handleCategoryUpdate = async (transactionId: string, newCategory: string) => {
-    setUpdatingId(transactionId); // Start loading state for this specific row
+    setUpdatingId(transactionId);
     try {
       const token = await getToken();
       const response = await fetch(`http://127.0.0.1:8000/api/v1/transactions/${transactionId}`, {
@@ -117,11 +123,8 @@ export function TransactionsDataTable() {
         body: JSON.stringify({ category: newCategory }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update category.');
-      }
+      if (!response.ok) throw new Error('Failed to update category.');
 
-      // Update the state locally for an immediate UI update
       setTransactions((current) =>
         current.map((trx) =>
           trx.id === transactionId ? { ...trx, category: newCategory } : trx
@@ -132,20 +135,24 @@ export function TransactionsDataTable() {
     } catch (err) {
       toast.error("Update Failed", { description: (err as Error).message });
     } finally {
-      setUpdatingId(null); // End loading state for this row
+      setUpdatingId(null);
     }
   };
 
   return (
     <Card>
-      {/* --- Filter Controls UI --- */}
+      {/* Filter Controls UI */}
       <div className="p-4 flex flex-wrap items-center gap-4 border-b">
-        <Input
-          placeholder="Search descriptions..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
+        <InputGroup className="max-w-sm">
+          <InputGroupAddon>
+            <Search className="h-4 w-4" />
+          </InputGroupAddon>
+          <Input
+            placeholder="Search descriptions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </InputGroup>
         <Select value={selectedCategory || "all"} onValueChange={handleCategoryChange}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="All Categories" />
@@ -160,14 +167,14 @@ export function TransactionsDataTable() {
         <DateRangePicker date={dateRange} onDateChange={setDateRange} />
       </div>
 
-      {/* --- Data Table --- */}
+      {/* Data Table */}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[150px]">Date</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead className="w-[180px]">Category</TableHead>
+              <TableHead className="w-[220px]">Category</TableHead>
               <TableHead className="text-right w-[150px]">Amount</TableHead>
             </TableRow>
           </TableHeader>
@@ -177,7 +184,17 @@ export function TransactionsDataTable() {
             ) : error ? (
               <TableRow><TableCell colSpan={4} className="h-24 text-center text-red-500">Error: {error}</TableCell></TableRow>
             ) : transactions.length === 0 ? (
-              <TableRow><TableCell colSpan={4} className="h-24 text-center">No transactions found for the selected filters.</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={4} className="py-12">
+                  <Empty>
+                    <EmptyMedia><ListX /></EmptyMedia>
+                    <EmptyTitle>No Transactions Found</EmptyTitle>
+                    <EmptyDescription>
+                      No transactions match your current filters.
+                    </EmptyDescription>
+                  </Empty>
+                </TableCell>
+              </TableRow>
             ) : (
               transactions.map((transaction) => (
                 <TableRow key={transaction.id}>
@@ -185,17 +202,15 @@ export function TransactionsDataTable() {
                   <TableCell className="font-medium">
                     {transaction.cleaned_description || transaction.description}
                   </TableCell>
-                  
-                  {/* --- UPGRADED CATEGORY CELL with inline editing --- */}
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      {updatingId === transaction.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {updatingId === transaction.id && <Spinner className="h-4 w-4" />}
                       <Select
                         value={transaction.category}
                         onValueChange={(newCategory) => handleCategoryUpdate(transaction.id, newCategory)}
                         disabled={updatingId === transaction.id}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -206,7 +221,6 @@ export function TransactionsDataTable() {
                       </Select>
                     </div>
                   </TableCell>
-
                   <TableCell
                     className={cn(
                       'text-right font-mono',

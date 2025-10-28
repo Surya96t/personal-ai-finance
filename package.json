@@ -12,6 +12,7 @@
     "dev:backend": "cd backend && source .venv/bin/activate && cross-env INNGEST_DEV=1 uvicorn app.main:app --reload"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0"
   }
 }

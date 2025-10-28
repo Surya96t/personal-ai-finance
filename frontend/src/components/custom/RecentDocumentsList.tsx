@@ -10,6 +10,9 @@ import { supabase } from '@/lib/supabase';
 import { type RealtimePostgresChangesPayload } from '@supabase/supabase-js'; 
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '../ui/empty';
+import { CircleDashed, FileText, FileUp } from 'lucide-react';
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '../ui/item';
 
 
 // --- UPDATED TYPE: Includes all new granular statuses ---
@@ -131,35 +134,41 @@ export function RecentDocumentsList() {
   // --- The rendered JSX is unchanged ---
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between"> {/* <-- Add justify-between */}
-        <div>
-          <CardTitle>Recent Documents</CardTitle>
-          <CardDescription>The status of your most recent uploads.</CardDescription>
-        </div>
-        {/* --- NEW LINK --- */}
-        <Button asChild variant="outline" size="sm">
-            <Link href="/transactions">View All Transactions</Link>
-        </Button>
+      <CardHeader>
+        <CardTitle>Recent Documents</CardTitle>
+        <CardDescription>The status of your most recent uploads.</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading && documents.length === 0 ? (
-          <p>Loading documents...</p>
+          <div className="text-center text-muted-foreground">
+            <CircleDashed className="mx-auto h-8 w-8 animate-spin" />
+            <p className="mt-2">Loading documents...</p>
+          </div>
         ) : documents.length === 0 ? (
-          <p>No documents uploaded yet.</p>
+          // --- NEW: Using the Empty component ---
+          <Empty>
+            <EmptyMedia><FileUp /></EmptyMedia>
+            <EmptyTitle>No Documents Yet</EmptyTitle>
+            <EmptyDescription>
+              Upload your first document to get started.
+            </EmptyDescription>
+          </Empty>
         ) : (
-          <ul className="space-y-4">
+          // --- NEW: Using ItemGroup for the list ---
+          <ItemGroup>
             {documents.map((doc) => (
-              <li key={doc.id} className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{doc.file_name}</p>
-                  <p className="text-sm text-muted-foreground">
+              <Item key={doc.id}>
+                <ItemMedia variant="icon"><FileText /></ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{doc.file_name}</ItemTitle>
+                  <ItemDescription>
                     Uploaded on {format(new Date(doc.created_at), 'LLL dd, y')}
-                  </p>
-                </div>
+                  </ItemDescription>
+                </ItemContent>
                 <StatusBadge status={doc.status} />
-              </li>
+              </Item>
             ))}
-          </ul>
+          </ItemGroup>
         )}
       </CardContent>
     </Card>
