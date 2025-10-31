@@ -1,18 +1,20 @@
 # backend/app/inngest_functions.py
 
+from decimal import Decimal
 import os
 import inngest
 import json
 import asyncio
 from .clients import inngest_client  # We will create supabase client locally now
 # <-- Import our new encryption service
-from .encryption_service import encrypt_data
+from .encryption_service import encrypt_data, encrypt_amount
 from google.cloud import vision
 import google.generativeai as genai
 from pydantic import BaseModel, Field
 from typing import List, Literal
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from .cache_service import cache
 
 # Load environment variables
 load_dotenv()
@@ -439,19 +441,42 @@ async def enrich_and_categorize_transactions(ctx: inngest.Context) -> dict:
                 errors.append(str(trx))
                 continue
 
-            plaintext_data = trx
-            encrypted_blob = encrypt_data(plaintext_data)
+            # --- V-- START OF MODIFICATION --V ---
 
-            # This is the correct payload. It does NOT include 'description'
-            # or 'cleaned_description', which is now allowed by our schema change.
+            # Ensure we have the user_id for the encryption context
+            user_id = trx.get('user_id')
+            if not user_id:
+                print(
+                    f"CRITICAL: Missing user_id for transaction, cannot encrypt amount. TRX: {trx}")
+                errors.append("Missing user_id for encryption")
+                continue
+
+            # Encrypt the full data blob as before
+            encrypted_blob = encrypt_data(trx)
+
+            # Convert amount to Decimal for precision, then encrypt it separately
+            try:
+                amount_decimal = Decimal(str(trx.get('amount', '0.0')))
+                encrypted_amount = encrypt_amount(amount_decimal, user_id)
+            except Exception as e:
+                print(
+                    f"CRITICAL: Failed to encrypt amount for transaction. Error: {e}, TRX: {trx}")
+                errors.append(f"Amount encryption failed: {e}")
+                continue
+
+            # The record now includes the new `amount_encrypted` field.
+            # The plaintext `amount` field is still present for the migration period.
             records_to_insert.append({
-                "user_id": plaintext_data.get('user_id'),
-                "document_id": plaintext_data.get('document_id'),
+                "user_id": user_id,
+                "document_id": trx.get('document_id'),
                 "encrypted_data": encrypted_blob,
-                "date": plaintext_data.get('date'),
-                "amount": plaintext_data.get('amount'),
-                "category": plaintext_data.get('category'),
+                "date": trx.get('date'),
+                # "amount": trx.get('amount'),  # <-- KEEP PLAINTEXT (dual-write)
+                "amount_encrypted": encrypted_amount,   # <-- ADD ENCRYPTED
+                "category": trx.get('category'),
             })
+
+            # --- ^-- END OF MODIFICATION --^ ---
 
         if errors:
             print(f"Warning: {len(errors)} enrichment tasks failed.")
@@ -474,8 +499,29 @@ async def enrich_and_categorize_transactions(ctx: inngest.Context) -> dict:
         await asyncio.to_thread(lambda: supabase.table("documents").update({"status": "COMPLETED"}).eq("id", document_id).execute())
     await ctx.step.run("mark-document-as-completed", mark_document_as_completed)
 
+    # We need the user_id for the invalidation step later
+    user_id_for_invalidation = None
+    if transactions_to_enrich:
+        user_id_for_invalidation = transactions_to_enrich[0].get('user_id')
+
+    # --- V-- START OF CACHE INVALIDATION LOGIC --V ---
+
+    # FINAL STEP: Invalidate the cache for this user.
+    # This ensures that the next time they load the dashboard, they will
+    # see the new data from the document they just uploaded.
+    async def invalidate_user_cache() -> str:
+        if user_id_for_invalidation:
+            cache.invalidate_user(user_id_for_invalidation)
+            return f"Cache invalidated for user: {user_id_for_invalidation}"
+        return "No user ID found to invalidate cache."
+
+    invalidation_result = await ctx.step.run("invalidate-dashboard-cache", invalidate_user_cache)
+
+    # --- ^-- END OF CACHE INVALIDATION LOGIC --^ ---
+
     return {
         "status": "enrichment_completed",
         "document_id": document_id,
-        "transactions_encrypted": inserted_count
+        "transactions_encrypted": inserted_count,
+        "cache_status": invalidation_result  # Add status to function output for clarity
     }

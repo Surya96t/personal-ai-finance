@@ -1,96 +1,184 @@
-// frontend/src/components/custom/DateRangePicker.tsx
-'use client';
+"use client"
 
-import * as React from 'react';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { format, subDays, startOfYear } from 'date-fns';
-import { type DateRange } from 'react-day-picker';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useState } from "react"
+import {
+  endOfMonth,
+  endOfYear,
+  startOfMonth,
+  startOfYear,
+  subDays,
+  subMonths,
+  subYears,
+} from "date-fns"
+import { DateRange } from "react-day-picker"
 
-interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
-  date: DateRange | undefined;
-  onDateChange: (date: DateRange | undefined) => void;
-}
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { format } from "date-fns"
+import { CalendarIcon } from "lucide-react"
 
-export function DateRangePicker({ className, date, onDateChange }: DateRangePickerProps) {
-  const currentYear = new Date().getFullYear();
+export function DateRangePicker() {
+  const today = new Date()
+  const yesterday = {
+    from: subDays(today, 1),
+    to: subDays(today, 1),
+  }
+  const last7Days = {
+    from: subDays(today, 6),
+    to: today,
+  }
+  const last30Days = {
+    from: subDays(today, 29),
+    to: today,
+  }
+  const monthToDate = {
+    from: startOfMonth(today),
+    to: today,
+  }
+  const lastMonth = {
+    from: startOfMonth(subMonths(today, 1)),
+    to: endOfMonth(subMonths(today, 1)),
+  }
+  const yearToDate = {
+    from: startOfYear(today),
+    to: today,
+  }
+  const lastYear = {
+    from: startOfYear(subYears(today, 1)),
+    to: endOfYear(subYears(today, 1)),
+  }
+  const [date, setDate] = useState<DateRange | undefined>(last7Days)
 
   return (
-    <div className={cn('grid gap-2', className)}>
+    <div>
       <Popover>
         <PopoverTrigger asChild>
           <Button
-            id="date"
-            variant={'outline'}
-            className={cn(
-              'w-[300px] justify-start text-left font-normal',
-              !date && 'text-muted-foreground'
-            )}
+            variant="outline"
+            className="w-[300px] justify-start text-left font-normal"
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
+            {/* Show selected range or placeholder */}
             {date?.from ? (
               date.to ? (
-                <>
-                  {format(date.from, 'LLL dd, y')} - {format(date.to, 'LLL dd, y')}
-                </>
+                <>{format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}</>
               ) : (
-                format(date.from, 'LLL dd, y')
+                format(date.from, "LLL dd, y")
               )
             ) : (
               <span>Pick a date range</span>
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 flex" align="start">
-          {/* --- Presets Sidebar --- */}
-          <div className="flex flex-col space-y-2 border-r p-4">
+        <PopoverContent className="w-auto mr-6 flex p-0" align="start">
+          {/* Presets Sidebar */}
+          <div className="flex flex-col space-y-1 border-r p-3 min-w-[140px]">
+            <div className="text-xs font-semibold text-muted-foreground mb-2 px-2">
+              Quick Select
+            </div>
             <Button
               variant="ghost"
-              className="justify-start"
-              onClick={() => onDateChange({ from: subDays(new Date(), 6), to: new Date() })}
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate({
+                  from: today,
+                  to: today,
+                })
+              }}
             >
-              Last 7 Days
+              Today
             </Button>
             <Button
               variant="ghost"
-              className="justify-start"
-              onClick={() => onDateChange({ from: subDays(new Date(), 29), to: new Date() })}
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(yesterday)
+              }}
             >
-              Last 30 Days
+              Yesterday
             </Button>
             <Button
               variant="ghost"
-              className="justify-start"
-              onClick={() => onDateChange({ from: subDays(new Date(), 89), to: new Date() })}
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(last7Days)
+              }}
             >
-              Last 90 Days
+              Last 7 days
             </Button>
-             <Button
+            <Button
               variant="ghost"
-              className="justify-start"
-              onClick={() => onDateChange({ from: startOfYear(new Date()), to: new Date() })}
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(last30Days)
+              }}
             >
-              This Year
+              Last 30 days
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(monthToDate)
+              }}
+            >
+              Month to date
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(lastMonth)
+              }}
+            >
+              Last month
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(yearToDate)
+              }}
+            >
+              Year to date
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="justify-start h-8"
+              onClick={() => {
+                setDate(lastYear)
+              }}
+            >
+              Last year
             </Button>
           </div>
-
-          {/* --- Calendar with Year/Month Dropdowns --- */}
-          <Calendar
-            initialFocus
-            mode="range"
-            defaultMonth={date?.from}
-            selected={date}
-            onSelect={onDateChange}
-            numberOfMonths={2}
-            captionLayout="dropdown"
-            fromYear={currentYear - 10}
-            toYear={currentYear}
-          />
+          {/* Calendar */}
+          <div className="p-3">
+            <Calendar
+              mode="range"
+              selected={date}
+              onSelect={(newDate) => {
+                if (newDate) {
+                  setDate(newDate)
+                }
+              }}
+              disabled={[{ after: today }]}
+              captionLayout="dropdown"
+              startMonth={new Date(today.getFullYear() - 10, 0)}
+              endMonth={new Date(today.getFullYear(), 11)}
+            />
+          </div>
         </PopoverContent>
       </Popover>
     </div>
-  );
+  )
 }

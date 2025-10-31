@@ -27,7 +27,7 @@ export function ProtectedClientLayout({
             <div className="flex-1"></div>
             <RightSidebarSheet />
           </header>
-          <main className="flex-1 overflow-y-auto p-8">
+          <main className="flex-1 overflow-y-auto p-6">
             {children}
           </main>
         </div>

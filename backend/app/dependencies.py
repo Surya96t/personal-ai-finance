@@ -10,8 +10,12 @@ from supabase import create_client, Client
 from clerk_backend_api import Clerk
 from clerk_backend_api.security import AuthenticateRequestOptions
 from dotenv import load_dotenv
+from decimal import Decimal, InvalidOperation  # <-- Import Decimal
 
-from .encryption_service import decrypt_data
+# --- V-- IMPORT NEW DEPENDENCIES --V ---
+from .encryption_service import decrypt_data, decrypt_amount
+# from .config import ENCRYPTION_READ_PATH_ENABLED
+# --- ^-- IMPORT NEW DEPENDENCIES --^ ---
 
 load_dotenv()
 
@@ -45,8 +49,7 @@ async def get_current_user_claims(req: Request) -> Dict:
         raise HTTPException(status_code=401, detail=f"Unauthorized: {str(e)}")
 
 
-# --- REUSABLE HELPER FUNCTION ---
-
+# --- V-- THIS IS THE COMPLETELY REFACTORED HELPER FUNCTION --V ---
 
 async def fetch_and_decrypt_transactions(
     user_id: str,
@@ -56,13 +59,15 @@ async def fetch_and_decrypt_transactions(
     category: Optional[str] = None,
 ) -> List[Dict]:
     """
-    A reusable helper to fetch transactions from the DB and decrypt them.
-    Filtering by date and category is done at the database level for efficiency.
+    A reusable helper to fetch transactions and decrypt them.
+    It uses the ENCRYPTION_READ_PATH_ENABLED feature flag to determine
+    whether to decrypt the amount or use the plaintext fallback.
     """
     def sync_fetch_encrypted():
+        # Select both the old and new amount columns
         query_builder = (
             supabase.table("transactions")
-            .select("id, date, amount, category, encrypted_data")
+            .select("id, date, category, encrypted_data, amount_encrypted")
             .eq("user_id", user_id)
         )
         if category:
@@ -78,24 +83,35 @@ async def fetch_and_decrypt_transactions(
     encrypted_transactions = await asyncio.to_thread(sync_fetch_encrypted)
 
     decrypted_transactions = []
-    # --- THE FIX IS HERE ---
-    for trx in encrypted_transactions:
-        # The robust decrypt_data function will handle None.
-        decrypted_blob = decrypt_data(trx.get("encrypted_data"))
+    decryption_failures = 0
 
-        # We only add the transaction if decryption produced something.
-        if decrypted_blob:
-            full_transaction = {
-                "id": trx["id"],
-                "date": trx["date"],
-                "amount": trx["amount"],
-                "category": trx["category"],
-                **decrypted_blob
-            }
-            decrypted_transactions.append(full_transaction)
+    for trx in encrypted_transactions:
+        # Decrypt the main data blob (description, etc.) first
+        decrypted_blob = decrypt_data(trx.get("encrypted_data"))
+        if not decrypted_blob:
+            # Skip records with no main data blob
+            continue
+
+        full_transaction = {
+            "id": trx["id"],
+            "date": trx["date"],
+            "category": trx["category"],
+            **decrypted_blob
+        }
+
+        # --- PERMANENT LOGIC: Decrypt the amount ---
+        encrypted_amount_val = trx.get("amount_encrypted")
+        if encrypted_amount_val:
+            decrypted = decrypt_amount(encrypted_amount_val, user_id)
+            if decrypted is not None:
+                full_transaction["amount"] = decrypted
+                decrypted_transactions.append(full_transaction)
+            else:
+                print(
+                    f"WARN: Decryption failed for trx_id: {trx['id']}. Skipping transaction.")
         else:
-            # This handles old, unencrypted data. We can decide to log it or ignore it.
+            # This case should no longer happen for new data.
             print(
-                f"Skipping transaction {trx.get('id')} with no encrypted data.")
+                f"WARN: Missing encrypted amount for trx_id: {trx['id']}. Skipping transaction.")
 
     return decrypted_transactions

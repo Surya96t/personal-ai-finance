@@ -164,7 +164,7 @@ export function TransactionsDataTable() {
             ))}
           </SelectContent>
         </Select>
-        <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+        <DateRangePicker />
       </div>
 
       {/* Data Table */}

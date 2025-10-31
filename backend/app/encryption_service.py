@@ -1,23 +1,18 @@
-# backend/app/encryption_service.py
+# app/encryption_service.py
 
 import os
 import json
 import base64
+from decimal import Decimal, InvalidOperation
 from google.cloud import kms_v1
 
-# --- DO NOT INITIALIZE THE CLIENT HERE ---
-# kms_client = kms_v1.KeyManagementServiceClient() # THIS WAS THE BUG
-
-# --- Use a global variable to cache the client after first use ---
+# --- Global variables to cache the client and key path after first use ---
 _kms_client = None
 _key_path = None
 
 
 def _get_kms_client_and_key_path():
-    """
-    Initializes and caches the KMS client and key path.
-    This function will only do the expensive setup once.
-    """
+    """Initializes and caches the KMS client and key path."""
     global _kms_client, _key_path
     if _kms_client is None:
         _kms_client = kms_v1.KeyManagementServiceClient()
@@ -37,27 +32,25 @@ def _get_kms_client_and_key_path():
 
 
 def encrypt_data(plaintext_data: dict) -> str:
-    """Encrypts data using Google Cloud KMS."""
-    kms_client, key_path = _get_kms_client_and_key_path()  # <-- Initialize lazily
+    """Encrypts a dictionary using Google Cloud KMS."""
+    kms_client, key_path = _get_kms_client_and_key_path()
 
     try:
         plaintext_bytes = json.dumps(plaintext_data).encode("utf-8")
-        response = kms_client.encrypt(name=key_path, plaintext=plaintext_bytes)
+        response = kms_client.encrypt(
+            request={"name": key_path, "plaintext": plaintext_bytes}
+        )
         return base64.b64encode(response.ciphertext).decode("utf-8")
     except Exception as e:
-        print(f"Error during KMS encryption: {e}")
+        print(f"Error during KMS data encryption: {e}")
         raise e
-
-# --- THIS IS THE ROBUST DECRYPTION FUNCTION ---
 
 
 def decrypt_data(ciphertext_b64: str | None) -> dict:
     """
-    Decrypts a base64 encoded string using Google Cloud KMS.
+    Decrypts a base64 encoded string containing JSON using Google Cloud KMS.
     Safely handles None or empty inputs.
     """
-    # --- THE FIX IS HERE ---
-    # If the input is None or not a string, return an empty dict.
     if not isinstance(ciphertext_b64, str) or not ciphertext_b64:
         return {}
 
@@ -66,11 +59,76 @@ def decrypt_data(ciphertext_b64: str | None) -> dict:
     try:
         ciphertext_bytes = base64.b64decode(ciphertext_b64)
         response = kms_client.decrypt(
-            name=key_path, ciphertext=ciphertext_bytes)
+            request={"name": key_path, "ciphertext": ciphertext_bytes}
+        )
         decrypted_json_string = response.plaintext.decode("utf-8")
         return json.loads(decrypted_json_string)
     except Exception as e:
-        # If decryption fails for any reason (e.g., corrupted data),
-        # log it and return an empty dict to prevent a crash.
-        print(f"CRITICAL: Error during KMS decryption: {e}")
+        print(f"CRITICAL: Error during KMS data decryption: {e}")
         return {}
+
+# --- NEW FUNCTIONS FOR AMOUNT ENCRYPTION (TASK 0.1) ---
+
+
+def encrypt_amount(amount: Decimal, user_id: str) -> str:
+    """
+    Encrypts a single Decimal value using Google Cloud KMS with a specific context.
+    """
+    kms_client, key_path = _get_kms_client_and_key_path()
+
+    try:
+        # Convert Decimal to string, then to bytes for encryption
+        plaintext_bytes = str(amount).encode("utf-8")
+
+        # CRITICAL: Use Additional Authenticated Data (AAD) as encryption context
+        # This binds the ciphertext to the user and the data type, preventing misuse.
+        aad = json.dumps({"type": "amount", "user_id": user_id},
+                         sort_keys=True).encode('utf-8')
+
+        response = kms_client.encrypt(
+            request={
+                "name": key_path,
+                "plaintext": plaintext_bytes,
+                "additional_authenticated_data": aad
+            }
+        )
+        return base64.b64encode(response.ciphertext).decode("utf-8")
+    except Exception as e:
+        print(f"Error during KMS amount encryption: {e}")
+        raise e
+
+
+def decrypt_amount(encrypted_amount_b64: str, user_id: str) -> Decimal | None:
+    """
+    Decrypts a base64 encoded amount using Google Cloud KMS, validating the context.
+    Returns None on any failure.
+    """
+    if not isinstance(encrypted_amount_b64, str) or not encrypted_amount_b64:
+        return None
+
+    kms_client, key_path = _get_kms_client_and_key_path()
+
+    try:
+        ciphertext_bytes = base64.b64decode(encrypted_amount_b64)
+
+        # CRITICAL: Provide the exact same AAD that was used for encryption.
+        # If it doesn't match, the decryption call will fail.
+        aad = json.dumps({"type": "amount", "user_id": user_id},
+                         sort_keys=True).encode('utf-8')
+
+        response = kms_client.decrypt(
+            request={
+                "name": key_path,
+                "ciphertext": ciphertext_bytes,
+                "additional_authenticated_data": aad
+            }
+        )
+        decrypted_string = response.plaintext.decode("utf-8")
+
+        # Convert the decrypted string back to a Decimal for precision
+        return Decimal(decrypted_string)
+    except (InvalidOperation, Exception) as e:
+        # Catch any exception, from a bad b64 string to a KMS context mismatch.
+        print(
+            f"CRITICAL: Error during KMS amount decryption for user {user_id}: {e}")
+        return None  # Return None on failure to prevent crashes
