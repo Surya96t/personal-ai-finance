@@ -37,6 +37,7 @@ function SpendingPieChart({ data }: { data: SummaryData['spending_by_category'] 
 export default function DashboardPage() {
   const { summaryData, isLoading, dateRange, setDateRange } = useDashboardSummary();
 
+  
   // console.log("SummaryData:", {summaryData})
   // --- NEW: Define the color logic for the savings rate ---
   const getSavingsRateColor = (rate: number): string => {
@@ -49,7 +50,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Dashboard</h1>
-        <DateRangePicker/>
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
       </div>
 
       {isLoading ? (

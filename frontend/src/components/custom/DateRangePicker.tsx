@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   endOfMonth,
   endOfYear,
@@ -9,16 +9,21 @@ import {
   subDays,
   subMonths,
   subYears,
+  format,
 } from "date-fns"
 import { DateRange } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 
-export function DateRangePicker() {
+interface DateRangePickerProps {
+  value?: DateRange
+  onChange?: (date: DateRange | undefined) => void
+}
+
+export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   const today = new Date()
   const yesterday = {
     from: subDays(today, 1),
@@ -48,7 +53,21 @@ export function DateRangePicker() {
     from: startOfYear(subYears(today, 1)),
     to: endOfYear(subYears(today, 1)),
   }
-  const [date, setDate] = useState<DateRange | undefined>(last7Days)
+  const [date, setDate] = useState<DateRange | undefined>(value || last7Days)
+
+  // Sync with parent component
+  useEffect(() => {
+    if (value !== undefined) {
+      setDate(value)
+    }
+  }, [value])
+
+  const handleDateChange = (newDate: DateRange | undefined) => {
+    if (newDate) {
+      setDate(newDate)
+      onChange?.(newDate)
+    }
+  }
 
   return (
     <div>
@@ -59,7 +78,6 @@ export function DateRangePicker() {
             className="w-[300px] justify-start text-left font-normal"
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            {/* Show selected range or placeholder */}
             {date?.from ? (
               date.to ? (
                 <>{format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}</>
@@ -81,12 +99,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate({
-                  from: today,
-                  to: today,
-                })
-              }}
+              onClick={() => handleDateChange({ from: today, to: today })}
             >
               Today
             </Button>
@@ -94,9 +107,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(yesterday)
-              }}
+              onClick={() => handleDateChange(yesterday)}
             >
               Yesterday
             </Button>
@@ -104,9 +115,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(last7Days)
-              }}
+              onClick={() => handleDateChange(last7Days)}
             >
               Last 7 days
             </Button>
@@ -114,9 +123,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(last30Days)
-              }}
+              onClick={() => handleDateChange(last30Days)}
             >
               Last 30 days
             </Button>
@@ -124,9 +131,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(monthToDate)
-              }}
+              onClick={() => handleDateChange(monthToDate)}
             >
               Month to date
             </Button>
@@ -134,9 +139,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(lastMonth)
-              }}
+              onClick={() => handleDateChange(lastMonth)}
             >
               Last month
             </Button>
@@ -144,9 +147,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(yearToDate)
-              }}
+              onClick={() => handleDateChange(yearToDate)}
             >
               Year to date
             </Button>
@@ -154,9 +155,7 @@ export function DateRangePicker() {
               variant="ghost"
               size="sm"
               className="justify-start h-8"
-              onClick={() => {
-                setDate(lastYear)
-              }}
+              onClick={() => handleDateChange(lastYear)}
             >
               Last year
             </Button>
@@ -166,11 +165,7 @@ export function DateRangePicker() {
             <Calendar
               mode="range"
               selected={date}
-              onSelect={(newDate) => {
-                if (newDate) {
-                  setDate(newDate)
-                }
-              }}
+              onSelect={handleDateChange}
               disabled={[{ after: today }]}
               captionLayout="dropdown"
               startMonth={new Date(today.getFullYear() - 10, 0)}

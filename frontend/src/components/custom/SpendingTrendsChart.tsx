@@ -88,21 +88,34 @@ export function SpendingTrendsChart({ dateRange }: { dateRange: DateRange | unde
   }, [dateRange, getToken]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Daily Spending Trend</CardTitle>
-        <CardDescription>
-          A line chart showing your spending for each day in the selected period.
-        </CardDescription>
+    <Card className="h-full border-border/40 shadow-sm hover:shadow-md transition-shadow">
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="text-xl">Daily Spending Trend</CardTitle>
+            <CardDescription className="mt-1.5">
+              A line chart showing your spending for each day in the selected period.
+            </CardDescription>
+          </div>
+          {!isLoading && chartData.length > 0 && (
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground mb-1">Total Spending</div>
+              <div className="text-2xl font-bold flex items-center gap-1.5 text-blue-600">
+                {formatCurrency(chartData.reduce((sum, item) => sum + item.total_spending, 0))}
+              </div>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-            <CircleDashed className="h-8 w-8 animate-spin" />
+          <div className="flex flex-col items-center justify-center h-[350px] text-muted-foreground gap-3">
+            <CircleDashed className="h-10 w-10 animate-spin text-primary/60" />
+            <p className="text-sm">Loading spending trends...</p>
           </div>
         ) : chartData.length === 0 ? (
           <Empty className="h-[350px]">
-            <EmptyMedia><LineChartIcon /></EmptyMedia>
+            <EmptyMedia><LineChartIcon className="h-12 w-12" /></EmptyMedia>
             <EmptyTitle>No Data Available</EmptyTitle>
             <EmptyDescription>
               There is no spending data for the selected period.
@@ -113,29 +126,29 @@ export function SpendingTrendsChart({ dateRange }: { dateRange: DateRange | unde
             <LineChart data={chartData} width={undefined} height={350} accessibilityLayer margin={{ top: 5, right: 20, left: -10, bottom: 0 }}>
               <XAxis
                 dataKey="date"
-                stroke="#888888"
+                stroke="hsl(var(--muted-foreground))"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(value) => format(new Date(value), 'MMM dd')}
               />
               <YAxis
-                stroke="#888888"
+                stroke="hsl(var(--muted-foreground))"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(value) => `$${value}`}
               />
               <ChartTooltip
-                cursor={true}
+                cursor={{ fill: 'hsl(var(--muted))', opacity: 0.1 }}
                 content={<ChartTooltipContent formatter={(value) => formatCurrency(value as number)} />}
               />
               <Line
                 type="monotone"
                 dataKey="total_spending"
                 name="Spending"
-                stroke="#4f46e5"
-                strokeWidth={2}
+                stroke="hsl(217, 91%, 60%)"
+                strokeWidth={3}
                 dot={false}
               />
             </LineChart>
