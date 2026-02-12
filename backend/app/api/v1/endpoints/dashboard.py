@@ -1,4 +1,4 @@
-# backend/app/routers.py
+# backend/app/api/v1/endpoints/dashboard.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, List, Optional
@@ -7,14 +7,11 @@ from collections import defaultdict
 import asyncio
 from decimal import Decimal
 
-# Import our dependencies, including the new cache service
-from .dependencies import (
-    get_supabase_client,
-    get_current_user_claims,
-    security_scheme,
-    fetch_and_decrypt_transactions
-)
-from .cache_service import cache  # <-- IMPORT THE CACHE
+# Import our reorganized dependencies
+from app.core.auth import get_current_user_claims, security_scheme
+from app.db.client import get_supabase_client
+from app.services.transaction_service import fetch_transactions
+from app.core.cache import cache
 from supabase import Client
 
 # Create the router
@@ -52,7 +49,7 @@ async def get_dashboard_summary(
 
     try:
         # 1. Fetch transactions for the CURRENT period
-        current_transactions = await fetch_and_decrypt_transactions(
+        current_transactions = await fetch_transactions(
             user_id=user_id, supabase=supabase, start_date=start_date, end_date=end_date
         )
 
@@ -62,7 +59,7 @@ async def get_dashboard_summary(
         prev_start_date = prev_end_date - timedelta(days=period_duration)
 
         # 3. Fetch transactions for the PREVIOUS period
-        previous_transactions = await fetch_and_decrypt_transactions(
+        previous_transactions = await fetch_transactions(
             user_id=user_id, supabase=supabase, start_date=prev_start_date, end_date=prev_end_date
         )
 
@@ -71,9 +68,9 @@ async def get_dashboard_summary(
 
         # Calculate metrics for CURRENT period
         current_total_spending = sum(
-            trx['amount'] for trx in current_transactions if trx.get('amount', 0) < 0) * -1
+            Decimal(str(trx.get('amount', 0))) for trx in current_transactions if trx.get('amount', 0) < 0) * -1
         current_total_income = sum(
-            trx['amount'] for trx in current_transactions if trx.get('amount', 0) > 0)
+            Decimal(str(trx.get('amount', 0))) for trx in current_transactions if trx.get('amount', 0) > 0)
 
         # Calculate transaction counts
         income_transactions_count = sum(
@@ -85,16 +82,16 @@ async def get_dashboard_summary(
         # Calculate current average daily spending
         num_days_current = period_duration + 1
         average_daily_spending = current_total_spending / \
-            num_days_current if num_days_current > 0 else Decimal('0')
+            Decimal(num_days_current) if num_days_current > 0 else Decimal('0')
 
         # Calculations for PREVIOUS period
         previous_total_spending = sum(
-            trx['amount'] for trx in previous_transactions if trx.get('amount', 0) < 0) * -1
+            Decimal(str(trx.get('amount', 0))) for trx in previous_transactions if trx.get('amount', 0) < 0) * -1
         previous_total_income = sum(
-            trx['amount'] for trx in previous_transactions if trx.get('amount', 0) > 0)
+            Decimal(str(trx.get('amount', 0))) for trx in previous_transactions if trx.get('amount', 0) > 0)
         num_days_prev = (prev_end_date - prev_start_date).days + 1
         previous_average_daily_spending = previous_total_spending / \
-            num_days_prev if num_days_prev > 0 else Decimal('0')
+            Decimal(num_days_prev) if num_days_prev > 0 else Decimal('0')
 
         # Calculate percentage change for income & spending
         income_change = Decimal('0.0')
@@ -114,7 +111,7 @@ async def get_dashboard_summary(
         daily_spending = defaultdict(Decimal)
         for trx in current_transactions:
             if trx.get('amount', 0) < 0:
-                daily_spending[trx['date']] += trx['amount']
+                daily_spending[trx['date']] += Decimal(str(trx.get('amount', 0)))
 
         daily_spending_trend = []
         current_date = start_date
@@ -136,7 +133,7 @@ async def get_dashboard_summary(
         for trx in current_transactions:
             if trx.get('amount', 0) < 0:
                 spending_by_category[trx.get(
-                    "category", "Other")] += trx['amount']
+                    "category", "Other")] += Decimal(str(trx.get('amount', 0)))
 
         # Convert to float for JSON response
         formatted_spending = [{"category": cat, "total": float(
@@ -197,7 +194,7 @@ async def get_cashflow_data(
 
     try:
         # Step 1: Fetch all decrypted transactions.
-        transactions = await fetch_and_decrypt_transactions(
+        transactions = await fetch_transactions(
             user_id=user_id, supabase=supabase, start_date=start_date, end_date=end_date
         )
 
@@ -210,7 +207,7 @@ async def get_cashflow_data(
         for trx in transactions:
             month_key = date.fromisoformat(trx['date']).strftime(
                 '%b %Y')  # e.g., "Oct 2025"
-            amount = trx.get("amount", Decimal('0'))
+            amount = Decimal(str(trx.get("amount", 0)))
             if amount > 0:
                 monthly_data[month_key]["total_income"] += amount
             else:
@@ -258,13 +255,13 @@ async def get_spending_trends(
         return cached_result
 
     try:
-        transactions = await fetch_and_decrypt_transactions(
+        transactions = await fetch_transactions(
             user_id=user_id, supabase=supabase, start_date=start_date, end_date=end_date
         )
         daily_spending = defaultdict(Decimal)
         for trx in transactions:
             if trx.get('amount', 0) < 0:
-                daily_spending[trx['date']] += trx['amount']
+                daily_spending[trx['date']] += Decimal(str(trx.get('amount', 0)))
 
         result_to_cache = []
         current_date = start_date

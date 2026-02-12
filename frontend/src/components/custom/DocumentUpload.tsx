@@ -43,14 +43,21 @@ export function DocumentUpload() {
       });
 
       if (!responseStep1.ok) throw new Error("Failed to get upload URL.");
-      const { upload_url, gcs_path } = await responseStep1.json();
-      // console.log("Received upload URL:", upload_url);
-      // console.log("GCS Path:", gcs_path);
+      const { upload_url, path, token: uploadToken } = await responseStep1.json();
+      console.log("Received upload URL:", upload_url);
 
-      // === STEP 2: Upload the file directly to Google Cloud Storage ===
+      // === STEP 2: Upload the file directly to Supabase Storage ===
+      // Supabase Signed Upload URLs require the token in the Authorization header
+      const headers: HeadersInit = {
+        'Content-Type': file.type,
+      };
+      if (uploadToken) {
+        headers['Authorization'] = `Bearer ${uploadToken}`;
+      }
+
       const responseStep2 = await fetch(upload_url, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type },
+        headers: headers,
         body: file,
       });
 
@@ -66,8 +73,8 @@ export function DocumentUpload() {
         },
         body: JSON.stringify({ 
           file_name: file.name, 
-          gcs_path: gcs_path,
-          file_hash: fileHash, // <-- Send the hash to the backend
+          storage_path: path, // Changed from gcs_path to storage_path
+          file_hash: fileHash, 
         }),
       });
 

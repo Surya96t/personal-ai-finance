@@ -68,17 +68,20 @@ export function DocumentUploadModal({ isOpen, onOpenChange }: DocumentUploadModa
         method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!responseStep1.ok) throw new Error("Failed to get upload URL.");
-      const { upload_url, gcs_path } = await responseStep1.json();
+      const { upload_url, path, token: uploadToken } = await responseStep1.json();
+
+      const headers: HeadersInit = { 'Content-Type': selectedFile.type };
+      if (uploadToken) headers['Authorization'] = `Bearer ${uploadToken}`;
 
       const responseStep2 = await fetch(upload_url, {
-        method: 'PUT', headers: { 'Content-Type': selectedFile.type }, body: selectedFile
+        method: 'PUT', headers: headers, body: selectedFile
       });
       if (!responseStep2.ok) throw new Error("Failed to upload file to storage.");
 
       const responseStep3 = await fetch("http://127.0.0.1:8000/api/v1/documents/process", {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_name: selectedFile.name, gcs_path, file_hash: fileHash }),
+        body: JSON.stringify({ file_name: selectedFile.name, storage_path: path, file_hash: fileHash }),
       });
 
       if (responseStep3.status === 409) {

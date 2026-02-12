@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:*\"",
     "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:backend": "cd backend && source .venv/bin/activate && cross-env INNGEST_DEV=1 uvicorn app.main:app --reload"
+    "dev:backend": "source .venv/bin/activate && cd backend && cross-env INNGEST_DEV=1 uvicorn app.main:app --reload",
+    "dev:inngest": "npx inngest-cli@latest dev -u http://127.0.0.1:8000/api/inngest"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

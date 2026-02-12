@@ -10,3 +10,4 @@ gcp-credentials.json
 backend/.venv/
 node_modules
 .vscode/
+backend_backup/
