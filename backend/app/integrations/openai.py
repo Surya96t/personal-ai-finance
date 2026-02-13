@@ -4,7 +4,7 @@ import os
 import io
 import base64
 from typing import List, Dict, Optional
-from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import pypdfium2 as pdfium
 from PIL import Image
@@ -15,14 +15,14 @@ load_dotenv()
 _openai_client = None
 
 
-def get_openai_client() -> OpenAI:
+def get_openai_client() -> AsyncOpenAI:
     """Lazy initialization of OpenAI client."""
     global _openai_client
     if _openai_client is None:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set in environment variables")
-        _openai_client = OpenAI(api_key=api_key)
+        _openai_client = AsyncOpenAI(api_key=api_key)
     return _openai_client
 
 
@@ -39,63 +39,78 @@ async def extract_text_from_image(image_bytes: bytes, file_type: str = "pdf") ->
     """
     client = get_openai_client()
 
+    # List to hold processed images as (mime_type, base64_string)
+    processed_images = []
+
     # Handle PDF conversion
     if file_type.lower() == "pdf":
         try:
-            pdf = pdfium.PdfDocument(image_bytes)
-            if len(pdf) > 0:
-                # Render first page at 2x scale for better OCR
-                page = pdf[0]
-                bitmap = page.render(scale=2)
-                pil_image = bitmap.to_pil()
+            with pdfium.PdfDocument(image_bytes) as pdf:
+                # Iterate over all pages
+                for page in pdf:
+                    bitmap = None
+                    try:
+                        # Render page at 2x scale for better OCR
+                        bitmap = page.render(scale=2)
+                        pil_image = bitmap.to_pil()
+                        
+                        # Convert to JPEG bytes
+                        img_byte_arr = io.BytesIO()
+                        pil_image.save(img_byte_arr, format='JPEG')
+                        page_bytes = img_byte_arr.getvalue()
+                        
+                        b64_img = base64.b64encode(page_bytes).decode('utf-8')
+                        processed_images.append(("image/jpeg", b64_img))
+                    finally:
+                        if bitmap:
+                            bitmap.close()
+                        page.close()
                 
-                # Convert to JPEG bytes
-                img_byte_arr = io.BytesIO()
-                pil_image.save(img_byte_arr, format='JPEG')
-                image_bytes = img_byte_arr.getvalue()
-                
-                # Update file_type to jpg so MIME type is set correctly
-                file_type = "jpg"
         except Exception as e:
             print(f"Error converting PDF to image: {e}")
-            # Fallback (though this will likely fail 400 at OpenAI if it's still PDF data)
             raise ValueError(f"Could not convert PDF for OCR: {e}")
+    else:
+        # Convert bytes to base64 for non-PDF images
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Determine MIME type
+        mime_types = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+            "heic": "image/heic",
+            "heif": "image/heif"
+        }
+        mime_type = mime_types.get(file_type.lower(), "image/jpeg")
+        processed_images.append((mime_type, base64_image))
+
+    # Construct content with text prompt and all images
+    content = [
+        {
+            "type": "text",
+            "text": """Extract all text from this financial document. 
+            Focus on transaction data, dates, amounts, and descriptions.
+            Preserve the original formatting and structure as much as possible.
+            If provided with multiple images, they represent pages of the same document.
+            Return only the extracted text, no additional commentary."""
+        }
+    ]
+
+    for mime_type, b64_img in processed_images:
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{mime_type};base64,{b64_img}"
+            }
+        })
     
-    # Convert bytes to base64
-    base64_image = base64.b64encode(image_bytes).decode('utf-8')
-    
-    # Determine MIME type
-    mime_types = {
-        "pdf": "application/pdf",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "png": "image/png",
-        "webp": "image/webp",
-        "heic": "image/heic",
-        "heif": "image/heif"
-    }
-    mime_type = mime_types.get(file_type.lower(), "application/pdf")
-    
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Extract all text from this financial document. 
-                        Focus on transaction data, dates, amounts, and descriptions.
-                        Preserve the original formatting and structure as much as possible.
-                        Return only the extracted text, no additional commentary."""
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{base64_image}"
-                        }
-                    }
-                ],
+                "content": content,
             }
         ],
         max_tokens=4096
@@ -116,7 +131,7 @@ async def isolate_transaction_lines(full_text: str) -> str:
     """
     client = get_openai_client()
     
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
@@ -149,7 +164,7 @@ async def structure_transactions(transaction_lines: str) -> List[Dict]:
     """
     client = get_openai_client()
     
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
@@ -194,7 +209,7 @@ async def enrich_transaction(description: str) -> Dict[str, str]:
         "Personal Care", "Gifts & Donations", "Other"
     ]
     
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {

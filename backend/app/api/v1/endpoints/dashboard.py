@@ -111,7 +111,10 @@ async def get_dashboard_summary(
         daily_spending = defaultdict(Decimal)
         for trx in current_transactions:
             if trx.get('amount', 0) < 0:
-                daily_spending[trx['date']] += Decimal(str(trx.get('amount', 0)))
+                raw_date = trx['date']
+                # Normalize date key to string (ISO format) to ensure match with current_date.isoformat()
+                date_key = raw_date.isoformat() if hasattr(raw_date, "isoformat") else str(raw_date)
+                daily_spending[date_key] += Decimal(str(trx.get('amount', 0)))
 
         daily_spending_trend = []
         current_date = start_date

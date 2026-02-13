@@ -1,4 +1,5 @@
 import hashlib
+import json
 import threading
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -26,8 +27,9 @@ class SimpleCache:
 
     def _make_key(self, user_id: str, endpoint: str, params: Dict[str, Any]) -> str:
         """Creates a deterministic, unique key from the request parameters."""
-        # Sorting the params ensures that {'a': 1, 'b': 2} and {'b': 2, 'a': 1} produce the same key
-        param_string = "".join(f"{k}{v}" for k, v in sorted(params.items()))
+        # Using json.dumps ensures a standard representation and avoids collision (e.g., "a" + "11" vs "a1" + "1")
+        # default=str handles objects like Decimal that might not be natively serializable
+        param_string = json.dumps(params, sort_keys=True, default=str)
         key_data = f"{user_id}:{endpoint}:{param_string}"
         # Use a cryptographic hash to create a short, fixed-length key
         return hashlib.sha256(key_data.encode()).hexdigest()

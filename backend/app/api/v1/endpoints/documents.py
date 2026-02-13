@@ -83,7 +83,15 @@ async def process_document_request(
             }).execute()
 
         db_response = await asyncio.to_thread(sync_insert)
-        document_id = db_response.data[0]['id']
+        
+        if not db_response or not getattr(db_response, "data", None) or not isinstance(db_response.data, list) or len(db_response.data) == 0:
+            raise ValueError("Database insert returned no data.")
+             
+        first_record = db_response.data[0]
+        if not isinstance(first_record, dict) or "id" not in first_record:
+            raise ValueError("Database insert returned invalid record format (missing 'id').")
+
+        document_id = first_record['id']
 
     except Exception as e:
         if "user_document_hash_unique" in str(e).lower():
@@ -96,16 +104,33 @@ async def process_document_request(
             status_code=500, detail="Could not create document record."
         )
 
-    # Trigger Inngest workflow
-    await inngest_client.send(
-        inngest.Event(
-            name="app/document.uploaded",
-            data={
-                "document_id": document_id,
-                "storage_path": request.storage_path,
-            }
+    # Trigger Inngest workflow with error handling
+    try:
+        await inngest_client.send(
+            inngest.Event(
+                name="app/document.uploaded",
+                data={
+                    "document_id": document_id,
+                    "storage_path": request.storage_path,
+                }
+            )
         )
-    )
+    except Exception as e:
+        print(f"Error sending Inngest event: {e}")
+        # Compensating action: Update status to avoid zombie "UPLOADED" state
+        try:
+            await asyncio.to_thread(
+                lambda: supabase.table("documents")
+                .update({"status": "EVENT_FAILED", "error_message": f"Failed to trigger workflow: {str(e)}"})
+                .eq("id", document_id)
+                .execute()
+            )
+        except Exception as update_error:
+            print(f"CRITICAL: Failed to update document status after event failure: {update_error}")
+        
+        raise HTTPException(
+            status_code=500, detail="Document created but processing workflow failed to start."
+        )
 
     return {"status": "processing_queued", "document_id": document_id}
 

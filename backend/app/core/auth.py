@@ -32,5 +32,7 @@ async def get_current_user_claims(req: Request) -> Dict:
                 status_code=401, detail="Unauthorized: Not signed in"
             )
         return request_state.payload
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Unauthorized: {str(e)}")
+        raise HTTPException(status_code=401, detail="Authentication failed")

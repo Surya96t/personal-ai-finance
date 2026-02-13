@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import inngest
 from app.workflows.client import inngest_client
 from app.db.client import get_supabase_client
 from app.integrations.openai import structure_transactions
 from app.cache_service import cache
+
+logger = logging.getLogger(__name__)
 
 @inngest_client.create_function(
     fn_id="ai-structure-transaction-data",
@@ -12,6 +15,10 @@ from app.cache_service import cache
 )
 async def structure_transaction_data(ctx: inngest.Context) -> dict:
     document_id = ctx.event.data.get("document_id")
+    
+    if not document_id:
+        logger.error(f"Missing document_id in event data: {ctx.event.data}")
+        return {"status": "failed", "error": "Missing document_id"}
 
     # 1. Update status
     async def update_status() -> None:
@@ -41,6 +48,17 @@ async def structure_transaction_data(ctx: inngest.Context) -> dict:
     user_id = doc_data.get("user_id")
 
     if not lines_text:
+        # Update status to a terminal state before returning
+        async def update_status_no_data() -> None:
+            supabase = get_supabase_client()
+            await asyncio.to_thread(
+                lambda: supabase.table("documents")
+                .update({"status": "COMPLETED_NO_DATA"})
+                .eq("id", document_id)
+                .execute()
+            )
+        await ctx.step.run("update-status-to-no-data", update_status_no_data)
+        
         return {"status": "completed_no_data", "reason": "Empty transaction lines"}
 
     # 3. Structure data

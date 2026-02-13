@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 import inngest
 from app.workflows.client import inngest_client
 from app.db.client import get_supabase_client
@@ -11,6 +12,9 @@ from app.integrations.openai import isolate_transaction_lines as openai_isolate
 )
 async def isolate_transaction_lines(ctx: inngest.Context) -> dict:
     document_id = ctx.event.data.get("document_id")
+    
+    if not document_id:
+        raise ValueError("Line Isolation failed: 'document_id' is missing or empty in event data.")
 
     # 1. Update status
     async def update_status() -> None:
@@ -48,7 +52,11 @@ async def isolate_transaction_lines(ctx: inngest.Context) -> dict:
         supabase = get_supabase_client()
         await asyncio.to_thread(
             lambda: supabase.table("documents")
-            .update({"transaction_lines_text": isolated_lines})
+            .update({
+                "transaction_lines_text": isolated_lines,
+                "status": "ISOLATION_COMPLETE",
+                "updated_at": datetime.utcnow().isoformat()
+            })
             .eq("id", document_id)
             .execute()
         )

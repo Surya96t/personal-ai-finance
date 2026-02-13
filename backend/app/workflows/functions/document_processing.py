@@ -16,6 +16,11 @@ async def process_document_uploaded(ctx: inngest.Context) -> dict:
     # 1. Extract event data
     document_id = ctx.event.data.get("document_id")
     storage_path = ctx.event.data.get("storage_path")
+    
+    if not document_id or not storage_path:
+        raise inngest.NonRetriableError(
+            f"Missing required event data: document_id={document_id}, storage_path={storage_path}"
+        )
 
     # 2. Database update (wrapped)
     async def update_status_to_processing() -> None:

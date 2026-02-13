@@ -60,7 +60,22 @@ async def upload_file_to_storage(
         return response
     
     result = await asyncio.to_thread(sync_upload)
-    return result.get("Key", file_path)
+    
+    # Handle response - could be dict or Response object
+    uploaded_path = None
+    
+    if isinstance(result, dict):
+        uploaded_path = result.get("Key") or result.get("key") or result.get("path")
+    elif hasattr(result, "json"):
+        try:
+            data = result.json()
+            if isinstance(data, dict):
+                uploaded_path = data.get("Key") or data.get("key") or data.get("path")
+        except:
+            pass
+            
+    # Return extracted path or fallback to request path
+    return uploaded_path if uploaded_path else file_path
 
 
 async def delete_file_from_storage(
@@ -78,11 +93,24 @@ async def delete_file_from_storage(
         True if successful
     """
     def sync_delete():
-        response = supabase.storage.from_(STORAGE_BUCKET).remove([file_path])
-        return response
+        return supabase.storage.from_(STORAGE_BUCKET).remove([file_path])
     
-    await asyncio.to_thread(sync_delete)
-    return True
+    try:
+        response = await asyncio.to_thread(sync_delete)
+        
+        # Check if response is a list of deleted objects (success case)
+        if isinstance(response, list) and len(response) > 0:
+            return True
+            
+        # Handle failures or file not found cases
+        if isinstance(response, dict) and response.get("error"):
+            raise Exception(f"Storage delete error: {response['error']}")
+            
+        return False
+        
+    except Exception as e:
+        print(f"Error deleting file {file_path}: {e}")
+        raise e
 
 
 def get_file_type_from_path(file_path: str) -> str:

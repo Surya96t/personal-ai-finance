@@ -1,6 +1,7 @@
 import os
 import asyncio
 import inngest
+import mimetypes
 from app.workflows.client import inngest_client
 from app.db.client import get_supabase_client
 from app.core.storage import download_file_from_storage
@@ -14,6 +15,9 @@ from app.integrations.openai import extract_text_from_image
 async def perform_ocr_on_document(ctx: inngest.Context) -> dict:
     document_id = ctx.event.data.get("document_id")
     storage_path = ctx.event.data.get("storage_path")
+
+    if not document_id or not storage_path:
+        raise ValueError(f"Missing required event data: document_id={document_id}, storage_path={storage_path}")
 
     # 1. Update status
     async def update_status_to_ocr() -> None:
@@ -29,7 +33,30 @@ async def perform_ocr_on_document(ctx: inngest.Context) -> dict:
         file_bytes = await download_file_from_storage(supabase, storage_path)
         
         # Determine file type
-        file_ext = storage_path.split('.')[-1].lower() if '.' in storage_path else "jpg"
+        file_ext = None
+        _, ext_part = os.path.splitext(storage_path)
+        if ext_part:
+            file_ext = ext_part.lstrip('.').lower()
+        
+        if not file_ext:
+            mime_type, _ = mimetypes.guess_type(storage_path)
+            if mime_type:
+                 # guess_extension returns .ext, we want ext
+                 ext = mimetypes.guess_extension(mime_type)
+                 if ext:
+                     file_ext = ext.lstrip('.')
+        
+        if not file_ext:
+            # Fallback: check magic bytes for common types
+            if file_bytes.startswith(b'%PDF'):
+                file_ext = "pdf"
+            elif file_bytes.startswith(b'\xff\xd8\xff'):
+                file_ext = "jpg"
+            elif file_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+                file_ext = "png"
+                
+        if not file_ext:
+             raise ValueError(f"Could not determine file extension for {storage_path} and magic byte detection failed.")
         
         # Extract text using GPT-4o Vision
         text = await extract_text_from_image(file_bytes, file_ext)
@@ -67,7 +94,12 @@ async def perform_ocr_on_document(ctx: inngest.Context) -> dict:
     # 4. Save extracted text
     async def save_extracted_text() -> None:
         supabase = get_supabase_client()
-        await asyncio.to_thread(lambda: supabase.table("documents").update({"extracted_text": extracted_text}).eq("id", document_id).execute())
+        update_payload = {
+            "extracted_text": extracted_text,
+            "status": "OCR_COMPLETE",
+            "error_message": None  # Clear any previous error
+        }
+        await asyncio.to_thread(lambda: supabase.table("documents").update(update_payload).eq("id", document_id).execute())
     await ctx.step.run("save-extracted-text-to-db", save_extracted_text)
 
     # 5. Trigger next step (Isolation)

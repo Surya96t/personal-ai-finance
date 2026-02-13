@@ -14,6 +14,11 @@ async def enrich_transaction_function(ctx: inngest.Context) -> dict:
     transaction_id = ctx.event.data.get("transaction_id")
     description = ctx.event.data.get("description")
 
+    if not transaction_id:
+        raise ValueError("Enrichment failed: 'transaction_id' is missing or empty in event data.")
+    if not description:
+        raise ValueError("Enrichment failed: 'description' is missing or empty in event data.")
+
     # 1. Enrich using OpenAI
     async def call_enrichment() -> dict:
         return await enrich_transaction(description)
@@ -24,22 +29,29 @@ async def enrich_transaction_function(ctx: inngest.Context) -> dict:
     async def update_transaction() -> None:
         supabase = get_supabase_client()
         
+        category = enrichment_result.get("category")
+        cleaned_description = enrichment_result.get("cleaned_description")
+        
+        if not category:
+            raise ValueError("Enrichment failed: 'category' is missing in OpenAI response.")
+
         update_data = {
-            "category": enrichment_result.get("category"),
+            "category": category,
             "is_enriched": True
         }
         
-        # Include cleaned_description if available. 
-        # Note: Ensure your DB table has this column. If not, this might fail or be ignored.
-        if enrichment_result.get("cleaned_description"):
-             update_data["cleaned_description"] = enrichment_result.get("cleaned_description")
+        if cleaned_description:
+            update_data["cleaned_description"] = cleaned_description
              
-        await asyncio.to_thread(
+        response = await asyncio.to_thread(
             lambda: supabase.table("transactions")
             .update(update_data)
             .eq("id", transaction_id)
             .execute()
         )
+
+        if not response.data:
+            raise ValueError(f"Failed to update transaction: Transaction {transaction_id} not found.")
     
     await ctx.step.run("update-transaction-db", update_transaction)
     
