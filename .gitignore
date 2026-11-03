@@ -11,3 +11,8 @@ backend/.venv/
 node_modules
 .vscode/
 backend_backup/
+
+# Praxis vault state: machine-written, kept on disk, never committed
+/STATE.md
+/TASKS.md
+/TASKS-ARCHIVE.md
